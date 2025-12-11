@@ -22,11 +22,25 @@ const db = new Database(path.join(__dirname, 'Merchantdb/merchant.db'));
 // A. Get All Merchants (For the Listing Page)
 app.get('/api/merchants', (req, res) => {
     try {
-        // Fetch basic info for the cards
+        // Fetch merchants with price range AND working hours
         const merchants = db.prepare(`
-            SELECT id, slug, name, industry, address, cover_photo_path, timezone 
-            FROM merchants 
-            ORDER BY created_at DESC
+            SELECT m.*, 
+                   MIN(s.price) as min_price, 
+                   MAX(s.price) as max_price,
+                   (
+                       SELECT json_group_array(json_object(
+                           'day', day_of_week, 
+                           'open', open_time, 
+                           'close', close_time, 
+                           'isOpen', is_open
+                       ))
+                       FROM working_hours wh 
+                       WHERE wh.merchant_id = m.id
+                   ) as hours_json
+            FROM merchants m
+            LEFT JOIN services s ON m.id = s.merchant_id
+            GROUP BY m.id
+            ORDER BY m.created_at DESC
         `).all();
         res.json(merchants);
     } catch (err) {

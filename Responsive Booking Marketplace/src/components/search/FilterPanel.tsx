@@ -1,129 +1,151 @@
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
-import { Slider } from '../ui/slider';
 import { Separator } from '../ui/separator';
 import { Button } from '../ui/button';
-import { Calendar } from '../ui/calendar';
-import { X } from 'lucide-react';
+import { Input } from '../ui/input'; 
+import { Search } from 'lucide-react'; 
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface FilterPanelProps {
   onClose?: () => void;
   isMobile?: boolean;
+  categories?: string[];
+  onApplyFilters?: (filters: any) => void;
 }
 
-export function FilterPanel({ onClose, isMobile }: FilterPanelProps) {
-  const [date, setDate] = useState<Date>();
-  const [priceRange, setPriceRange] = useState([1, 4]);
+export function FilterPanel({ onClose, isMobile, categories = [], onApplyFilters }: FilterPanelProps) {
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedPriceTiers, setSelectedPriceTiers] = useState<number[]>([]);
+  const [noDeposit, setNoDeposit] = useState(false);
+  const [openNow, setOpenNow] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(''); 
+
+  const handleCategoryChange = (category: string, checked: boolean) => {
+    if (checked) {
+      setSelectedCategories([...selectedCategories, category]);
+    } else {
+      setSelectedCategories(selectedCategories.filter(c => c !== category));
+    }
+  };
+
+  const togglePriceTier = (tier: number) => {
+    if (selectedPriceTiers.includes(tier)) {
+      setSelectedPriceTiers(selectedPriceTiers.filter(t => t !== tier));
+    } else {
+      setSelectedPriceTiers([...selectedPriceTiers, tier]);
+    }
+  };
+
+  const applyFilters = () => {
+    if (onApplyFilters) {
+      onApplyFilters({
+        query: searchQuery, 
+        categories: selectedCategories,
+        priceTiers: selectedPriceTiers,
+        noDeposit: noDeposit,
+        openNow: openNow 
+      });
+      toast.success("Filters applied successfully!");
+    }
+    if (isMobile && onClose) onClose();
+  };
 
   return (
-    <div className="bg-white rounded-3xl p-7 shadow-soft border border-[var(--color-border)] h-fit sticky top-24">
-      {isMobile && (
-        <div className="flex items-center justify-between mb-6">
-          <h5>Filters</h5>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
-      )}
-
-      {/* Categories */}
+    <div className="bg-white rounded-3xl p-7 shadow-soft border border-[var(--color-border)] h-fit sticky top-24 z-20 relative">
+      
+      {/* Keyword Search */}
       <div className="mb-6">
-        <h6 className="mb-4">Category</h6>
-        <div className="space-y-3">
-          {[
-            { id: 'salon', label: 'Salons & Spas' },
-            { id: 'restaurant', label: 'Restaurants' },
-            { id: 'sports', label: 'Sports & Fitness' },
-          ].map((category) => (
-            <div key={category.id} className="flex items-center space-x-2">
-              <Checkbox id={category.id} />
-              <Label htmlFor={category.id} className="cursor-pointer">
-                {category.label}
-              </Label>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Separator className="my-6" />
-
-      {/* Date */}
-      <div className="mb-6">
-        <h6 className="mb-4">Date</h6>
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={setDate}
-          className="rounded-xl border"
-        />
-      </div>
-
-      <Separator className="my-6" />
-
-      {/* Price Range */}
-      <div className="mb-6">
-        <h6 className="mb-4">Price Range</h6>
-        <div className="px-2">
-          <Slider
-            value={priceRange}
-            onValueChange={setPriceRange}
-            min={1}
-            max={4}
-            step={1}
-            className="mb-4"
+        <h6 className="mb-4 font-semibold">Search</h6>
+        <div className="relative">
+          {/* UPDATED: Changed left-3 to left-4 for better spacing */}
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input 
+            placeholder="Name, service, or location..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-12 bg-gray-50 border-gray-200 focus:bg-white transition-all"
           />
-          <div className="flex justify-between text-sm text-[var(--color-text-secondary)]">
-            <span>{'$'.repeat(priceRange[0])}</span>
-            <span>{'$'.repeat(priceRange[1])}</span>
-          </div>
         </div>
       </div>
 
       <Separator className="my-6" />
 
-      {/* Rating */}
+      {/* Category Filter */}
       <div className="mb-6">
-        <h6 className="mb-4">Rating</h6>
+        <h6 className="mb-4 font-semibold">Category</h6>
         <div className="space-y-3">
-          {[4.5, 4.0, 3.5, 3.0].map((rating) => (
-            <div key={rating} className="flex items-center space-x-2">
-              <Checkbox id={`rating-${rating}`} />
-              <Label htmlFor={`rating-${rating}`} className="cursor-pointer">
-                {rating}+ stars
+          {categories.map((category) => (
+            <div key={category} className="flex items-center space-x-2">
+              <Checkbox 
+                id={category} 
+                checked={selectedCategories.includes(category)}
+                onCheckedChange={(checked) => handleCategoryChange(category, checked as boolean)}
+              />
+              <Label htmlFor={category} className="cursor-pointer capitalize text-sm">
+                {category}
               </Label>
             </div>
+          ))}
+          {categories.length === 0 && <p className="text-sm text-gray-500">No categories found</p>}
+        </div>
+      </div>
+
+      <Separator className="my-6" />
+
+      {/* Price Tier Filter */}
+      <div className="mb-6">
+        <h6 className="mb-4 font-semibold">Price Range</h6>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((tier) => (
+            <button
+              key={tier}
+              onClick={() => togglePriceTier(tier)}
+              className={`
+                flex-1 h-10 rounded-lg text-sm font-medium transition-all duration-200 border
+                ${selectedPriceTiers.includes(tier)
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent shadow-md transform scale-105'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                }
+              `}
+            >
+              {Array(tier).fill('$').join('')}
+            </button>
           ))}
         </div>
       </div>
 
       <Separator className="my-6" />
 
-      {/* Features */}
+      {/* Features Filter */}
       <div className="mb-6">
-        <h6 className="mb-4">Features</h6>
+        <h6 className="mb-4 font-semibold">Features</h6>
         <div className="space-y-3">
-          {[
-            { id: 'whatsapp', label: 'WhatsApp Booking' },
-            { id: 'instant', label: 'Instant Confirm' },
-            { id: 'free-cancel', label: 'Free Cancellation' },
-            { id: 'open-now', label: 'Open Now' },
-          ].map((feature) => (
-            <div key={feature.id} className="flex items-center space-x-2">
-              <Checkbox id={feature.id} />
-              <Label htmlFor={feature.id} className="cursor-pointer">
-                {feature.label}
-              </Label>
+            <div className="flex items-center space-x-2">
+            <Checkbox 
+                id="open-now" 
+                checked={openNow}
+                onCheckedChange={(checked) => setOpenNow(checked as boolean)}
+            />
+            <Label htmlFor="open-now" className="cursor-pointer text-sm">Open Now</Label>
             </div>
-          ))}
+
+            <div className="flex items-center space-x-2">
+            <Checkbox 
+                id="no-deposit" 
+                checked={noDeposit}
+                onCheckedChange={(checked) => setNoDeposit(checked as boolean)}
+            />
+            <Label htmlFor="no-deposit" className="cursor-pointer text-sm">No Deposit Required</Label>
+            </div>
         </div>
       </div>
 
-      <Button className="w-full gradient-blue-purple hover:opacity-90 text-white transition-all duration-300 shadow-soft rounded-xl">
+      <Button 
+        onClick={applyFilters} 
+        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl h-12 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all duration-200 font-medium"
+      >
         Apply Filters
-      </Button>
-      <Button variant="ghost" className="w-full mt-2 rounded-xl">
-        Clear All
       </Button>
     </div>
   );

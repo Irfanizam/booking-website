@@ -13,8 +13,6 @@ export function Navbar({ onNavigate, currentPage, onAuthClick }: NavbarProps) {
 
   const navLinks = [
     { label: 'Browse', page: 'browse' },
-    { label: 'Categories', page: 'categories' },
-    { label: 'How it works', page: 'how-it-works' },
   ];
 
   return (

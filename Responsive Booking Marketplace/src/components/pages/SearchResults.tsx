@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Business } from '../../types';
+import { useState, useMemo } from 'react';
 import { FilterPanel } from '../search/FilterPanel';
 import { BusinessCard } from '../search/BusinessCard';
 import { Button } from '../ui/button';
@@ -8,22 +7,34 @@ import { Sheet, SheetContent, SheetTrigger } from '../ui/sheet';
 import { SlidersHorizontal, Map, LayoutGrid } from 'lucide-react';
 
 interface SearchResultsProps {
-  businesses: Business[];
+  businesses: any[];
   onBusinessClick: (businessId: string) => void;
+  categories?: string[];
+  onFilterChange?: (filters: any) => void;
 }
 
-export function SearchResults({ businesses, onBusinessClick }: SearchResultsProps) {
+export function SearchResults({ businesses, onBusinessClick, categories, onFilterChange }: SearchResultsProps) {
   const [sortBy, setSortBy] = useState('relevance');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
 
+  // LOGIC: Sort the businesses based on selection
+  const sortedBusinesses = useMemo(() => {
+    return [...businesses].sort((a, b) => {
+      if (sortBy === 'price-low') return a.minPrice - b.minPrice;
+      if (sortBy === 'price-high') return b.minPrice - a.minPrice;
+      if (sortBy === 'rating') return b.rating - a.rating; // Assuming rating exists
+      return 0; // Relevance (default order)
+    });
+  }, [businesses, sortBy]);
+
   return (
-    <div className="min-h-screen bg-[var(--color-surface-gray)] py-8">
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
           <h3 className="mb-2">{businesses.length} businesses found</h3>
-          <p className="text-[var(--color-text-secondary)]">
-            Showing results in Kuala Lumpur • Today
+          <p className="text-gray-500">
+            Showing results based on your filters
           </p>
         </div>
 
@@ -39,32 +50,33 @@ export function SearchResults({ businesses, onBusinessClick }: SearchResultsProp
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[300px] p-0">
-                <FilterPanel isMobile />
+                <FilterPanel 
+                    isMobile 
+                    categories={categories}
+                    onApplyFilters={onFilterChange}
+                />
               </SheetContent>
             </Sheet>
 
-            {/* Sort */}
+            {/* Sort Dropdown */}
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-[180px] bg-white">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="relevance">Relevance</SelectItem>
-                <SelectItem value="rating">Highest Rated</SelectItem>
                 <SelectItem value="price-low">Price: Low to High</SelectItem>
                 <SelectItem value="price-high">Price: High to Low</SelectItem>
-                <SelectItem value="available">Next Available</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* View Toggle */}
-          <div className="hidden md:flex items-center gap-2 bg-white rounded-lg p-1">
+          <div className="hidden md:flex items-center gap-2 bg-white rounded-lg p-1 border">
             <Button
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('grid')}
-              className={viewMode === 'grid' ? 'bg-[var(--color-secondary)]' : ''}
             >
               <LayoutGrid className="w-4 h-4" />
             </Button>
@@ -72,7 +84,6 @@ export function SearchResults({ businesses, onBusinessClick }: SearchResultsProp
               variant={viewMode === 'map' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('map')}
-              className={viewMode === 'map' ? 'bg-[var(--color-secondary)]' : ''}
             >
               <Map className="w-4 h-4" />
             </Button>
@@ -83,14 +94,18 @@ export function SearchResults({ businesses, onBusinessClick }: SearchResultsProp
         <div className="flex gap-8">
           {/* Desktop Filter Panel */}
           <div className="hidden lg:block w-80 flex-shrink-0">
-            <FilterPanel />
+            <FilterPanel 
+                categories={categories} 
+                onApplyFilters={onFilterChange}
+            />
           </div>
 
           {/* Results */}
           <div className="flex-1">
             {viewMode === 'grid' ? (
               <div className="space-y-6">
-                {businesses.map((business) => (
+                {/* RENDER THE SORTED LIST */}
+                {sortedBusinesses.map((business) => (
                   <BusinessCard
                     key={business.id}
                     business={business}
@@ -99,12 +114,12 @@ export function SearchResults({ businesses, onBusinessClick }: SearchResultsProp
                 ))}
               </div>
             ) : (
-              <div className="bg-white rounded-2xl p-8 shadow-soft h-[600px] flex items-center justify-center">
+              <div className="bg-white rounded-2xl p-8 shadow-sm h-[600px] flex items-center justify-center">
                 <div className="text-center">
-                  <Map className="w-16 h-16 mx-auto mb-4 text-[var(--color-text-secondary)]" />
+                  <Map className="w-16 h-16 mx-auto mb-4 text-gray-400" />
                   <h5 className="mb-2">Map View</h5>
-                  <p className="text-[var(--color-text-secondary)]">
-                    Interactive map view with business locations
+                  <p className="text-gray-500">
+                    Interactive map view coming soon
                   </p>
                 </div>
               </div>
@@ -112,21 +127,12 @@ export function SearchResults({ businesses, onBusinessClick }: SearchResultsProp
 
             {/* Empty State */}
             {businesses.length === 0 && (
-              <div className="bg-white rounded-2xl p-12 shadow-soft text-center">
+              <div className="bg-white rounded-2xl p-12 shadow-sm text-center">
                 <div className="max-w-md mx-auto">
-                  <div className="w-20 h-20 bg-[var(--color-surface)] rounded-full flex items-center justify-center mx-auto mb-4">
-                    <SlidersHorizontal className="w-10 h-10 text-[var(--color-text-secondary)]" />
-                  </div>
                   <h4 className="mb-2">No results found</h4>
-                  <p className="text-[var(--color-text-secondary)] mb-6">
-                    Try adjusting your filters or search criteria
+                  <p className="text-gray-500 mb-6">
+                    Try adjusting your filters to see more results.
                   </p>
-                  <Button
-                    variant="outline"
-                    className="border-[var(--color-secondary)] text-[var(--color-secondary)]"
-                  >
-                    Clear Filters
-                  </Button>
                 </div>
               </div>
             )}
