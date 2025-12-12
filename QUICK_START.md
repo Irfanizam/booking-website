@@ -84,4 +84,3 @@ npm run dev
 ## 📞 Need Help?
 
 See `IMPLEMENTATION_GUIDE.md` for detailed documentation.
-
