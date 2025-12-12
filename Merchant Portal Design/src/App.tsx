@@ -33,6 +33,18 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    // Import authAPI to use logout method
+    import('./services/api').then(({ authAPI }) => {
+      authAPI.logout();
+    });
+    
+    // Clear all user data from localStorage
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('user');
+    localStorage.removeItem('merchant_id');
+    localStorage.removeItem('merchant');
+    localStorage.removeItem('auth_token');
+    
     setAppState('auth');
     setCurrentPage('dashboard');
   };

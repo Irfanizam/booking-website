@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Calendar,
   BarChart3,
@@ -40,6 +40,55 @@ export function Layout({
   onLogout,
 }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userData, setUserData] = useState<{ name: string; role: string } | null>(null);
+
+  // Load user data from localStorage
+  useEffect(() => {
+    const loadUserData = () => {
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          // Use business_name if available, otherwise use email username, otherwise 'User'
+          const businessName = user.business_name || 
+                              (user.email ? user.email.split('@')[0] : null) || 
+                              'User';
+          setUserData({
+            name: businessName,
+            role: user.role === 'merchant' ? 'Merchant' : 'Salon Owner'
+          });
+        } else {
+          // Fallback if no user data
+          setUserData({ name: 'User', role: 'Salon Owner' });
+        }
+      } catch (err) {
+        console.error('Error loading user data:', err);
+        setUserData({ name: 'User', role: 'Salon Owner' });
+      }
+    };
+    
+    loadUserData();
+    
+    // Listen for storage changes (in case user data is updated elsewhere)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'user') {
+        loadUserData();
+      }
+    };
+    
+    // Also listen for custom events (for same-tab updates)
+    const handleUserUpdate = () => {
+      loadUserData();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('userDataUpdated', handleUserUpdate);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userDataUpdated', handleUserUpdate);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -112,9 +161,9 @@ export function Layout({
                 <Users className="h-4 w-4 text-primary-foreground" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium">John Doe</p>
+                <p className="text-sm font-medium">{userData?.name || 'User'}</p>
                 <p className="text-xs text-muted-foreground">
-                  Salon Owner
+                  {userData?.role || 'Salon Owner'}
                 </p>
               </div>
             </div>

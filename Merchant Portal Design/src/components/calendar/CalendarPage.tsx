@@ -1,10 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -20,6 +23,8 @@ import {
 } from 'lucide-react';
 import { Input } from '../ui/input';
 import { cn } from '../ui/utils';
+import { bookingsAPI, merchantsAPI } from '../../services/api';
+import { toast } from 'sonner';
 
 interface CalendarPageProps {
   onNavigate: (page: string) => void;
@@ -47,8 +52,8 @@ interface BookingEvent {
   backgroundColor: string;
 }
 
-// Actual booking data from the system
-const bookingEvents: BookingEvent[] = [
+// Mock booking data (fallback)
+const mockBookingEvents: BookingEvent[] = [
   {
     title: 'Haircut - Sarah Johnson',
     start: '2025-11-15T10:00:00',
@@ -336,10 +341,239 @@ export function CalendarPage({ onNavigate }: CalendarPageProps) {
     }
   };
 
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 10, 18)); // November 18, 2025
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('week');
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [selectedDayBookings, setSelectedDayBookings] = useState<{ date: string; bookings: BookingEvent[] } | null>(null);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [merchantId, setMerchantId] = useState<number | null>(null);
+  const [services, setServices] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showAddBookingDialog, setShowAddBookingDialog] = useState(false);
+  const [showEditBookingDialog, setShowEditBookingDialog] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<any>(null);
+  
+  // Form state for new booking
+  const [newBooking, setNewBooking] = useState({
+    customer_name: '',
+    customer_phone: '',
+    customer_email: '',
+    service_id: '',
+    booking_date: '',
+    booking_time: '',
+    staff_name: '',
+    notes: ''
+  });
+
+  // Load merchant ID and services
+  useEffect(() => {
+    const loadMerchantData = async () => {
+      try {
+        const storedMerchantId = localStorage.getItem('merchant_id');
+        if (storedMerchantId) {
+          const merchantIdNum = parseInt(storedMerchantId);
+          setMerchantId(merchantIdNum);
+          
+          // Try to get merchant data - if we have merchant data in localStorage, use it
+          const storedMerchant = localStorage.getItem('merchant');
+          if (storedMerchant) {
+            try {
+              const merchant = JSON.parse(storedMerchant);
+              if (merchant && merchant.services) {
+                setServices(merchant.services);
+              }
+            } catch (e) {
+              // If parsing fails, try to fetch from API
+              const allMerchants = await merchantsAPI.getAll();
+              const merchant = allMerchants.find((m: any) => m.id === merchantIdNum);
+              if (merchant && merchant.services) {
+                setServices(merchant.services);
+              }
+            }
+          } else {
+            // Fetch from API
+            const allMerchants = await merchantsAPI.getAll();
+            const merchant = allMerchants.find((m: any) => m.id === merchantIdNum);
+            if (merchant && merchant.services) {
+              setServices(merchant.services);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error loading merchant data:', err);
+      }
+    };
+    loadMerchantData();
+  }, []);
+
+  // Load bookings when date changes
+  useEffect(() => {
+    if (merchantId) {
+      loadBookings();
+    }
+  }, [merchantId, currentDate, viewMode]);
+
+  const loadBookings = async () => {
+    if (!merchantId) return;
+    
+    setIsLoading(true);
+    try {
+      let startDate: string;
+      let endDate: string;
+      
+      if (viewMode === 'week') {
+        const startOfWeek = new Date(currentDate);
+        startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+        startDate = startOfWeek.toISOString().split('T')[0];
+        
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endDate = endOfWeek.toISOString().split('T')[0];
+      } else if (viewMode === 'month') {
+        const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        startDate = startOfMonth.toISOString().split('T')[0];
+        
+        const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+        endDate = endOfMonth.toISOString().split('T')[0];
+      } else {
+        startDate = currentDate.toISOString().split('T')[0];
+        endDate = startDate;
+      }
+
+      const allBookings = await bookingsAPI.getAll({ merchant_id: merchantId });
+      const filteredBookings = allBookings.filter((b: any) => {
+        const bookingDate = b.booking_date;
+        return bookingDate >= startDate && bookingDate <= endDate;
+      });
+      
+      setBookings(filteredBookings);
+    } catch (err: any) {
+      console.error('Error loading bookings:', err);
+      toast.error('Failed to load bookings');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Convert bookings to BookingEvent format
+  const bookingEvents: BookingEvent[] = useMemo(() => {
+    return bookings.map((b: any) => {
+      const startDate = new Date(`${b.booking_date}T${b.booking_time}`);
+      const duration = b.service?.duration || 60;
+      const endDate = new Date(startDate.getTime() + duration * 60000);
+      
+      return {
+        title: `${b.service?.name || 'Service'} - ${b.customer_name}`,
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        backgroundColor: b.status === 'cancelled' ? '#dc3545' : '#0d6efd',
+        bookingId: b.id
+      };
+    });
+  }, [bookings]);
+
+  // Handlers
+  const handleAddBooking = async () => {
+    if (!merchantId || !newBooking.customer_name || !newBooking.customer_phone || 
+        !newBooking.service_id || !newBooking.booking_date || !newBooking.booking_time) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const service = services.find(s => s.id.toString() === newBooking.service_id);
+      await bookingsAPI.create({
+        merchant_id: merchantId,
+        service_id: parseInt(newBooking.service_id),
+        customer_name: newBooking.customer_name,
+        customer_phone: newBooking.customer_phone,
+        customer_email: newBooking.customer_email || undefined,
+        booking_date: newBooking.booking_date,
+        booking_time: newBooking.booking_time,
+        staff_name: newBooking.staff_name || undefined,
+        notes: newBooking.notes || undefined,
+        total_price: service?.price || undefined
+      });
+      
+      toast.success('Booking created successfully!');
+      setShowAddBookingDialog(false);
+      setNewBooking({
+        customer_name: '',
+        customer_phone: '',
+        customer_email: '',
+        service_id: '',
+        booking_date: '',
+        booking_time: '',
+        staff_name: '',
+        notes: ''
+      });
+      loadBookings();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create booking');
+    }
+  };
+
+  const handleEditBooking = async () => {
+    if (!editingBooking) return;
+
+    try {
+      await bookingsAPI.update(editingBooking.id, {
+        customer_name: editingBooking.customer_name,
+        customer_phone: editingBooking.customer_phone,
+        customer_email: editingBooking.customer_email,
+        booking_date: editingBooking.booking_date,
+        booking_time: editingBooking.booking_time,
+        staff_name: editingBooking.staff_name,
+        notes: editingBooking.notes
+      });
+      
+      toast.success('Booking updated successfully!');
+      setShowEditBookingDialog(false);
+      setEditingBooking(null);
+      loadBookings();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update booking');
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: number) => {
+    if (!confirm('Are you sure you want to cancel this booking?')) return;
+
+    try {
+      await bookingsAPI.cancel(bookingId);
+      toast.success('Booking cancelled successfully!');
+      setSelectedSlot(null);
+      loadBookings();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to cancel booking');
+    }
+  };
+
+  const handleOpenAddDialog = (slot?: TimeSlot) => {
+    if (slot) {
+      const date = slot.id.split('-').slice(0, 3).join('-');
+      const time = slot.time;
+      setNewBooking({
+        ...newBooking,
+        booking_date: date,
+        booking_time: time
+      });
+    }
+    setShowAddBookingDialog(true);
+  };
+
+  const handleOpenEditDialog = (slot: TimeSlot) => {
+    const booking = bookings.find((b: any) => {
+      const date = b.booking_date;
+      const time = b.booking_time;
+      return slot.id === `${date}-${time.split(':')[0]}`;
+    });
+    
+    if (booking) {
+      setEditingBooking(booking);
+      setShowEditBookingDialog(true);
+    }
+  };
 
   // Parse booking title to extract service and customer
   const parseBookingTitle = (title: string): { service: string; customer: string } => {
@@ -917,7 +1151,7 @@ export function CalendarPage({ onNavigate }: CalendarPageProps) {
             <Eye className="h-4 w-4 mr-2" />
             View All Bookings
           </Button>
-          <Button>
+          <Button onClick={() => handleOpenAddDialog()}>
             <Plus className="h-4 w-4 mr-2" />
             Add Booking
           </Button>
@@ -1032,7 +1266,14 @@ export function CalendarPage({ onNavigate }: CalendarPageProps) {
 
               <div className="flex gap-2 pt-4">
                 {selectedSlot.status === 'open' && (
-                  <Button size="sm" className="flex-1">
+                  <Button 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => {
+                      handleOpenAddDialog(selectedSlot);
+                      setSelectedSlot(null);
+                    }}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Book Slot
                   </Button>
@@ -1040,11 +1281,33 @@ export function CalendarPage({ onNavigate }: CalendarPageProps) {
                 
                 {selectedSlot.status !== 'open' && (
                   <>
-                    <Button size="sm" variant="outline" className="flex-1">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => {
+                        handleOpenEditDialog(selectedSlot);
+                        setSelectedSlot(null);
+                      }}
+                    >
                       <Edit className="h-4 w-4 mr-2" />
                       Edit
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => {
+                        const booking = bookings.find((b: any) => {
+                          const date = b.booking_date;
+                          const time = b.booking_time;
+                          return selectedSlot.id === `${date}-${time.split(':')[0]}`;
+                        });
+                        if (booking) {
+                          handleCancelBooking(booking.id);
+                        }
+                      }}
+                    >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Cancel
                     </Button>
@@ -1189,6 +1452,190 @@ export function CalendarPage({ onNavigate }: CalendarPageProps) {
           </Card>
         </div>
       )}
+
+      {/* Add Booking Dialog */}
+      <Dialog open={showAddBookingDialog} onOpenChange={setShowAddBookingDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Booking</DialogTitle>
+            <DialogDescription>Create a new booking for a customer</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="customer_name">Customer Name *</Label>
+              <Input
+                id="customer_name"
+                value={newBooking.customer_name}
+                onChange={(e) => setNewBooking({ ...newBooking, customer_name: e.target.value })}
+                placeholder="John Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer_phone">Phone *</Label>
+              <Input
+                id="customer_phone"
+                value={newBooking.customer_phone}
+                onChange={(e) => setNewBooking({ ...newBooking, customer_phone: e.target.value })}
+                placeholder="+1234567890"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer_email">Email</Label>
+              <Input
+                id="customer_email"
+                type="email"
+                value={newBooking.customer_email}
+                onChange={(e) => setNewBooking({ ...newBooking, customer_email: e.target.value })}
+                placeholder="john@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="service_id">Service *</Label>
+              <Select value={newBooking.service_id} onValueChange={(value) => setNewBooking({ ...newBooking, service_id: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((service) => (
+                    <SelectItem key={service.id} value={service.id.toString()}>
+                      {service.name} - ${service.price} ({service.duration} min)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="booking_date">Date *</Label>
+                <Input
+                  id="booking_date"
+                  type="date"
+                  value={newBooking.booking_date}
+                  onChange={(e) => setNewBooking({ ...newBooking, booking_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="booking_time">Time *</Label>
+                <Input
+                  id="booking_time"
+                  type="time"
+                  value={newBooking.booking_time}
+                  onChange={(e) => setNewBooking({ ...newBooking, booking_time: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="staff_name">Staff Name</Label>
+              <Input
+                id="staff_name"
+                value={newBooking.staff_name}
+                onChange={(e) => setNewBooking({ ...newBooking, staff_name: e.target.value })}
+                placeholder="Emma"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={newBooking.notes}
+                onChange={(e) => setNewBooking({ ...newBooking, notes: e.target.value })}
+                placeholder="Additional notes..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddBookingDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddBooking}>Create Booking</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Booking Dialog */}
+      <Dialog open={showEditBookingDialog} onOpenChange={setShowEditBookingDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Booking</DialogTitle>
+            <DialogDescription>Update booking details</DialogDescription>
+          </DialogHeader>
+          {editingBooking && (
+            <>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit_customer_name">Customer Name *</Label>
+                  <Input
+                    id="edit_customer_name"
+                    value={editingBooking.customer_name}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, customer_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit_customer_phone">Phone *</Label>
+                  <Input
+                    id="edit_customer_phone"
+                    value={editingBooking.customer_phone}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, customer_phone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit_customer_email">Email</Label>
+                  <Input
+                    id="edit_customer_email"
+                    type="email"
+                    value={editingBooking.customer_email || ''}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, customer_email: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_booking_date">Date *</Label>
+                    <Input
+                      id="edit_booking_date"
+                      type="date"
+                      value={editingBooking.booking_date}
+                      onChange={(e) => setEditingBooking({ ...editingBooking, booking_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_booking_time">Time *</Label>
+                    <Input
+                      id="edit_booking_time"
+                      type="time"
+                      value={editingBooking.booking_time}
+                      onChange={(e) => setEditingBooking({ ...editingBooking, booking_time: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit_staff_name">Staff Name</Label>
+                  <Input
+                    id="edit_staff_name"
+                    value={editingBooking.staff_name || ''}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, staff_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit_notes">Notes</Label>
+                  <Textarea
+                    id="edit_notes"
+                    value={editingBooking.notes || ''}
+                    onChange={(e) => setEditingBooking({ ...editingBooking, notes: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowEditBookingDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEditBooking}>Save Changes</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

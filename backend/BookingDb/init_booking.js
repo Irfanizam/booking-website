@@ -28,7 +28,8 @@ const createSchema = () => {
         party_size INTEGER DEFAULT 1,
         total_price REAL,
         notes TEXT,
-        status TEXT DEFAULT 'confirmed', -- We auto-confirm for this prototype
+        status TEXT DEFAULT 'confirmed',
+        staff_name TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     `);

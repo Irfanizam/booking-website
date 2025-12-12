@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { MessageSquare, Smartphone } from 'lucide-react';
 import { Alert, AlertDescription } from '../ui/alert';
+import { toast } from 'sonner';
+import { authAPI } from '../../services/api';
 import logo from 'figma:asset/0b6d7a724e60d1fb0252e76f9f181438aa6ab406.png';
 
 interface AuthPageProps {
@@ -17,13 +19,62 @@ interface AuthPageProps {
 export function AuthPage({ onLogin, onStartOnboarding }: AuthPageProps) {
   const [isConnectingWhatsApp, setIsConnectingWhatsApp] = useState(false);
   const [whatsAppConnected, setWhatsAppConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [error, setError] = useState('');
 
-  const handleLogin = () => {
-    onLogin();
+  const handleLogin = async () => {
+    if (!loginEmail || !loginPassword) {
+      setError('Please enter email and password');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const result = await authAPI.login(loginEmail, loginPassword);
+      if (result.success) {
+        toast.success('Login successful!');
+        onLogin();
+      } else {
+        setError('Login failed. Please check your credentials.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Login failed. Please try again.');
+      toast.error(err.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSignUp = () => {
-    onStartOnboarding();
+  const handleSignUp = async () => {
+    if (!signupEmail || !signupPassword) {
+      setError('Please enter email and password');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const result = await authAPI.signup(signupEmail, signupPassword, businessName);
+      if (result.success) {
+        toast.success('Account created successfully!');
+        onStartOnboarding();
+      } else {
+        setError('Sign up failed. Please try again.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Sign up failed. Please try again.');
+      toast.error(err.message || 'Sign up failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleConnectWhatsApp = () => {
@@ -88,34 +139,80 @@ export function AuthPage({ onLogin, onStartOnboarding }: AuthPageProps) {
               </TabsList>
               
               <TabsContent value="signin" className="space-y-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" placeholder="Enter your email" />
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    placeholder="Enter your email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    disabled={isLoading}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" placeholder="Enter your password" />
+                  <Input 
+                    id="password" 
+                    type="password" 
+                    placeholder="Enter your password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    disabled={isLoading}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                  />
                 </div>
-                <Button onClick={handleLogin} className="w-full">
-                  Sign In
+                <Button onClick={handleLogin} className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </TabsContent>
               
               <TabsContent value="signup" className="space-y-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
                 <div className="space-y-2">
-                  <Label htmlFor="business-name">Business Name</Label>
-                  <Input id="business-name" placeholder="Your business name" />
+                  <Label htmlFor="business-name">Business Name (Optional)</Label>
+                  <Input 
+                    id="business-name" 
+                    placeholder="Your business name"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    disabled={isLoading}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email-signup">Email</Label>
-                  <Input id="email-signup" type="email" placeholder="Enter your email" />
+                  <Input 
+                    id="email-signup" 
+                    type="email" 
+                    placeholder="Enter your email"
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    disabled={isLoading}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password-signup">Password</Label>
-                  <Input id="password-signup" type="password" placeholder="Create a password" />
+                  <Input 
+                    id="password-signup" 
+                    type="password" 
+                    placeholder="Create a password"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    disabled={isLoading}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
+                  />
                 </div>
-                <Button onClick={handleSignUp} className="w-full">
-                  Create Account
+                <Button onClick={handleSignUp} className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Creating account...' : 'Create Account'}
                 </Button>
               </TabsContent>
             </Tabs>

@@ -3,11 +3,17 @@ const cors = require('cors');
 const path = require('path');
 const Database = require('better-sqlite3'); 
 const onboardRoutes = require('./routes/onboard');
+const authRoutes = require('./routes/auth');
+const bookingRoutes = require('./routes/bookings');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+// CORS configuration - allow requests from frontend
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*', // Allow all origins in development
+  credentials: true
+}));
 app.use(express.json());
 
 // 1. Serve Images Publicly
@@ -15,6 +21,12 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 2. Onboarding Routes (Write)
 app.use('/api/onboard', onboardRoutes);
+
+// 3. Authentication Routes
+app.use('/api/auth', authRoutes);
+
+// 4. Booking Routes
+app.use('/api/bookings', bookingRoutes);
 
 // 3. Marketplace Routes (Read - Merchant DB)
 const merchantDb = new Database(path.join(__dirname, 'Merchantdb/merchant.db'));
@@ -83,44 +95,8 @@ app.get('/api/merchants/:slug', (req, res) => {
     }
 });
 
-// --- [NEW] C. Create Booking Endpoint ---
-app.post('/api/bookings', (req, res) => {
-    try {
-        const { 
-            merchant_id, service_id, customer_name, customer_phone, 
-            customer_email, booking_date, booking_time, 
-            party_size, total_price, notes 
-        } = req.body;
-
-        if (!merchant_id || !service_id || !customer_name || !customer_phone || !booking_date || !booking_time) {
-            return res.status(400).json({ error: "Missing required fields" });
-        }
-
-        const stmt = bookingDb.prepare(`
-            INSERT INTO bookings (
-                merchant_id, service_id, customer_name, customer_phone, 
-                customer_email, booking_date, booking_time, 
-                party_size, total_price, notes, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
-        `);
-
-        const info = stmt.run(
-            merchant_id, service_id, customer_name, customer_phone, 
-            customer_email, booking_date, booking_time, 
-            party_size || 1, total_price, notes
-        );
-
-        res.json({ success: true, bookingId: info.lastInsertRowid });
-        console.log(`✅ New Booking Created: ID ${info.lastInsertRowid}`);
-
-    } catch (err) {
-        console.error("Booking Error:", err);
-        res.status(500).json({ success: false, error: "Failed to create booking" });
-    }
-});
-
-// --- [NEW] D. Get Booked Slots Endpoint ---
-app.get('/api/bookings', (req, res) => {
+// --- [LEGACY] Get Booked Slots Endpoint (for compatibility) ---
+app.get('/api/bookings/slots', (req, res) => {
     try {
         const { merchant_id, date } = req.query;
         if (!merchant_id || !date) {
@@ -142,6 +118,10 @@ app.get('/api/bookings', (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Backend Server is running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Backend Server is running on port ${PORT}`);
+    console.log(`📍 Accessible at: http://localhost:${PORT}`);
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+        console.log(`🌐 Public URL: https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
+    }
 });

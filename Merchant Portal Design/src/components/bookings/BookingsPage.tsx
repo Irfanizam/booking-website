@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -30,6 +30,8 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { cn } from '../ui/utils';
+import { bookingsAPI } from '../../services/api';
+import { toast } from 'sonner';
 
 interface BookingsPageProps {
   onNavigate: (page: string) => void;
@@ -54,6 +56,7 @@ interface Booking {
   createdAt: string;
 }
 
+// Mock bookings for fallback
 const mockBookings: Booking[] = [
   {
     id: 'BK001',
@@ -177,6 +180,66 @@ export function BookingsPage({ onNavigate }: BookingsPageProps) {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [merchantId, setMerchantId] = useState<number | null>(null);
+
+  // Load merchant ID
+  useEffect(() => {
+    const storedMerchantId = localStorage.getItem('merchant_id');
+    if (storedMerchantId) {
+      setMerchantId(parseInt(storedMerchantId));
+    }
+  }, []);
+
+  // Load bookings
+  useEffect(() => {
+    if (merchantId) {
+      loadBookings();
+    }
+  }, [merchantId, statusFilter]);
+
+  const loadBookings = async () => {
+    if (!merchantId) return;
+    
+    setIsLoading(true);
+    try {
+      const params: any = { merchant_id: merchantId };
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      
+      const data = await bookingsAPI.getAll(params);
+      
+      // Convert API data to Booking format
+      const convertedBookings: Booking[] = data.map((b: any) => ({
+        id: b.id.toString(),
+        customer: {
+          name: b.customer_name,
+          phone: b.customer_phone,
+          email: b.customer_email || ''
+        },
+        service: b.service?.name || 'Service',
+        staff: b.staff_name || 'Unassigned',
+        date: b.booking_date,
+        time: b.booking_time,
+        duration: b.service?.duration || 60,
+        price: b.total_price || b.service?.price || 0,
+        status: b.status as any,
+        channel: 'web' as any, // Default to web
+        notes: b.notes,
+        createdAt: b.created_at
+      }));
+      
+      setBookings(convertedBookings);
+    } catch (err: any) {
+      console.error('Error loading bookings:', err);
+      toast.error('Failed to load bookings');
+      setBookings([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fadeInUp = {
     hidden: { opacity: 0, y: 30 },
@@ -197,7 +260,7 @@ export function BookingsPage({ onNavigate }: BookingsPageProps) {
     }
   };
 
-  const filteredBookings = mockBookings.filter(booking => {
+  const filteredBookings = bookings.filter(booking => {
     const matchesSearch = booking.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          booking.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          booking.service.toLowerCase().includes(searchTerm.toLowerCase());
@@ -234,10 +297,26 @@ export function BookingsPage({ onNavigate }: BookingsPageProps) {
     }
   };
 
-  const handleBulkAction = (action: string) => {
-    console.log(`Performing ${action} on bookings:`, selectedBookings);
-    // Implement bulk actions
-    setSelectedBookings([]);
+  const handleBulkAction = async (action: string) => {
+    if (selectedBookings.length === 0) return;
+
+    try {
+      if (action === 'cancel') {
+        for (const id of selectedBookings) {
+          await bookingsAPI.cancel(parseInt(id));
+        }
+        toast.success(`${selectedBookings.length} booking(s) cancelled`);
+      } else if (action === 'confirm') {
+        for (const id of selectedBookings) {
+          await bookingsAPI.update(parseInt(id), { status: 'confirmed' });
+        }
+        toast.success(`${selectedBookings.length} booking(s) confirmed`);
+      }
+      setSelectedBookings([]);
+      loadBookings();
+    } catch (err: any) {
+      toast.error(err.message || `Failed to ${action} bookings`);
+    }
   };
 
   return (
@@ -307,7 +386,21 @@ export function BookingsPage({ onNavigate }: BookingsPageProps) {
               </SelectContent>
             </Select>
 
-            <Button variant="outline">
+            <Button 
+              variant="outline"
+              onClick={async () => {
+                if (!merchantId) {
+                  toast.error('No merchant selected');
+                  return;
+                }
+                try {
+                  await bookingsAPI.exportCSV({ merchant_id: merchantId });
+                  toast.success('Bookings exported successfully!');
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to export bookings');
+                }
+              }}
+            >
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
@@ -633,7 +726,21 @@ export function BookingsPage({ onNavigate }: BookingsPageProps) {
                 <h3 className="font-medium">Actions</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {selectedBooking.status === 'pending' && (
-                    <Button size="sm" className="w-full">
+                    <Button 
+                      size="sm" 
+                      className="w-full"
+                      onClick={async () => {
+                        if (!selectedBooking) return;
+                        try {
+                          await bookingsAPI.update(parseInt(selectedBooking.id), { status: 'confirmed' });
+                          toast.success('Booking confirmed');
+                          setSelectedBooking(null);
+                          loadBookings();
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to confirm booking');
+                        }
+                      }}
+                    >
                       <CheckCircle className="h-4 w-4 mr-2" />
                       Confirm
                     </Button>
@@ -641,11 +748,35 @@ export function BookingsPage({ onNavigate }: BookingsPageProps) {
                   
                   {['confirmed', 'pending'].includes(selectedBooking.status) && (
                     <>
-                      <Button size="sm" variant="outline" className="w-full">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="w-full"
+                        onClick={async () => {
+                          if (!selectedBooking) return;
+                          if (!confirm('Are you sure you want to cancel this booking?')) return;
+                          try {
+                            await bookingsAPI.cancel(parseInt(selectedBooking.id));
+                            toast.success('Booking cancelled');
+                            setSelectedBooking(null);
+                            loadBookings();
+                          } catch (err: any) {
+                            toast.error(err.message || 'Failed to cancel booking');
+                          }
+                        }}
+                      >
                         <XCircle className="h-4 w-4 mr-2" />
                         Cancel
                       </Button>
-                      <Button size="sm" variant="outline" className="w-full">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="w-full"
+                        onClick={() => {
+                          // Navigate to calendar with pre-selected date/time
+                          onNavigate('calendar');
+                        }}
+                      >
                         <RotateCcw className="h-4 w-4 mr-2" />
                         Reschedule
                       </Button>
