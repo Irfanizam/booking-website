@@ -86,7 +86,7 @@ router.post('/', (req, res) => {
   try {
     const {
       merchant_id,
-      service_id,
+      service_id = 1, // Default to service_id 1 if not provided
       customer_name,
       customer_phone,
       customer_email,
@@ -98,8 +98,15 @@ router.post('/', (req, res) => {
       staff_name
     } = req.body;
 
-    if (!merchant_id || !service_id || !customer_name || !customer_phone || !booking_date || !booking_time) {
+    if (!merchant_id || !customer_name || !customer_phone || !booking_date || !booking_time) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // If no service_id provided, try to get first service for merchant, or use 1 as default
+    let finalServiceId = service_id;
+    if (!finalServiceId) {
+      const firstService = merchantDb.prepare('SELECT id FROM services WHERE merchant_id = ? LIMIT 1').get(merchant_id);
+      finalServiceId = firstService ? firstService.id : 1;
     }
 
     // Check if slot is already booked
@@ -122,7 +129,7 @@ router.post('/', (req, res) => {
 
     const info = stmt.run(
       merchant_id,
-      service_id,
+      finalServiceId,
       customer_name,
       customer_phone,
       customer_email || null,

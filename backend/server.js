@@ -1,10 +1,37 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const Database = require('better-sqlite3'); 
 const onboardRoutes = require('./routes/onboard');
 const authRoutes = require('./routes/auth');
 const bookingRoutes = require('./routes/bookings');
+
+// Initialize databases if they don't exist
+const initDatabases = () => {
+  try {
+    // Initialize merchant database
+    const merchantDbPath = path.join(__dirname, 'Merchantdb/merchant.db');
+    if (!fs.existsSync(merchantDbPath)) {
+      console.log('📦 Initializing merchant database...');
+      require('./Merchantdb/init.js');
+    }
+    
+    // Initialize booking database
+    const bookingDbPath = path.join(__dirname, 'BookingDb/bookings.db');
+    if (!fs.existsSync(bookingDbPath)) {
+      console.log('📦 Initializing booking database...');
+      require('./BookingDb/init_booking.js');
+    }
+    
+    console.log('✅ Databases ready');
+  } catch (err) {
+    console.error('❌ Database initialization error:', err);
+  }
+};
+
+// Initialize databases on startup
+initDatabases();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
